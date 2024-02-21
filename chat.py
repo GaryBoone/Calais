@@ -26,6 +26,9 @@ class Chat:
         ]
 
     def call_api(self, client, messages):
+        """
+        Call the OpenAI API to generate a response.
+        """
         # This function will be run in a separate thread to enforce the timeout.
         response = client.chat.completions.create(
             model=MODEL,
@@ -36,7 +39,7 @@ class Chat:
         )
         return response
 
-    def generate_response(self, messages):
+    def generate_response(self, messages, spinner=None):
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         retries = 0
@@ -55,6 +58,9 @@ class Chat:
                         case None:
                             pass
                         case _:
+                            if spinner:
+                                spinner.stop()
+                                spinner.clear()
                             print("Unexpected completion reason:", r)
                     chunk_text = chunk.choices[0].delta.content
                     if chunk_text.strip() == "":
@@ -65,11 +71,16 @@ class Chat:
                     retries += 1
                     empty_chunk_count = 0
                     if retries < self.max_retries:
-                        print("Received too many empty chunks. Retrying...")
+                        if spinner:
+                            spinner.stop()
+                            spinner.clear()
+                        print(" [Received too many empty chunks. Retrying...]")
                         time.sleep(self.retry_delay)
+                        if spinner:
+                            spinner.start()
                         continue
                     else:
-                        raise Exception("Received too many empty chunks. Max retries exceeded.")
+                        raise Exception(" [Received too many empty chunks. Max retries exceeded.]")
 
                 yield text
 
@@ -78,21 +89,33 @@ class Chat:
             except (OpenAIError, concurrent.futures.TimeoutError) as e:
                 retries += 1
                 if retries < self.max_retries:
+                    if spinner:
+                        spinner.stop()
+                        spinner.clear()
                     print(f"Error occurred. Retrying in {self.retry_delay} seconds... ({e})")
                     time.sleep(self.retry_delay)
+                    if spinner:
+                        spinner.start()
                 else:
                     raise e  # Re-raise if max retries exceeded.
 
-    def accumulate_responses(self, messages):
+    def accumulate_responses(self, messages, spinner=None):
         text = ""
-        for chunk in self.generate_response(messages):
-            text += chunk
+        try:
+            for chunk in self.generate_response(messages, spinner):
+                text += chunk
+        except Exception as e:
+            if spinner:
+                spinner.stop()
+                spinner.clear()
+            print(e)
+            return ""
         return text
 
 
-    def call_gpt4(self, messages):
+    def call_gpt4(self, messages, spinner=None):
         messages = self.create_prompt(messages)
-        return self.accumulate_responses(messages)
+        return self.accumulate_responses(messages, spinner)
 
 
 
