@@ -91,6 +91,7 @@ def create_command(gpt: chat.Chat, user_prompt: str) -> NoReturn:
             case "e" | "ex" | "explain":
                 user_prompt = f"Explain the command `{command}`"
                 gpt.call_gpt4(user_prompt, True)
+                print("")
 
 
 def process_command(command: str) -> str:
