@@ -1,0 +1,22 @@
+
+[project]
+name = "calais"
+version = "0.1.0"
+description = "Fast shell command generation using GPT-4"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Gary Boone", email = "gary.boone@gmail.com" }]
+keywords = ["AI", "GPT-4", "CLI"]
+urls = { Homepage = "http://guthub.com/garyboone/calais" }
+dependencies = ['typing-extensions; python_version < "3.8"', "openai>=0.10.2"]
+optional-dependencies = {}
+
+[project.scripts]
+ai = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "chat", "client", "system_prompt"]
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"

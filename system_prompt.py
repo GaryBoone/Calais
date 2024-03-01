@@ -1,6 +1,7 @@
 """
-This module contains the system prompt for the AI Thinkers project.
+This module contains the GPT-4 system prompt for Calais.
 """
+
 COMMAND_SYSTEM_PROMPT = """
 You are an expert command-line interface (CLI) assistant. 
 
