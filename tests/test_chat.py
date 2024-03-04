@@ -1,7 +1,7 @@
 """Tests for the Chat class."""
 
 from unittest import mock
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 import pytest
 
 from openai.types.chat.chat_completion_chunk import (
@@ -12,8 +12,6 @@ from openai.types.chat.chat_completion_chunk import (
 
 from chat import (
     Chat,
-    ChatCompletionMessageParam,
-    OpenAIError,
     ChatError,
 )
 

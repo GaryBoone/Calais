@@ -26,7 +26,6 @@ def chat_service(mock_openai_client):
     return Chat(mock_openai_client, 1, 1, 1, 1)
 
 
-@pytest.fixture
 def make_mock_chunk(content, finish_reason=None):
     """Create a single chunk with the given content and finish reason."""
     return ChatCompletionChunk(
@@ -44,7 +43,7 @@ def make_mock_chunk(content, finish_reason=None):
     )
 
 
-class ChatServiceTestHelper:
+class TestChat:
     """Helper class for testing the Chat service."""
 
     def test_chat_call_api_single_chunk(self, mock_openai_client, chat_service):
