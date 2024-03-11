@@ -15,7 +15,14 @@ optional-dependencies = {}
 ai = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "chat", "client", "system_prompt"]
+py-modules = [
+    "main",
+    "chat",
+    "client",
+    "content_printer",
+    "response",
+    "system_prompt",
+]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

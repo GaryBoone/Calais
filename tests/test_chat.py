@@ -1,21 +1,61 @@
 """Tests for the Chat class."""
 
+from typing import Iterable, List, Literal, Optional
 from unittest import mock
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import pytest
 
+from openai import Stream
 from openai.types.chat.chat_completion_chunk import (
     Choice,
     ChoiceDelta,
     ChatCompletionChunk,
 )
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageParam,
+)
 
 from chat import (
     Chat,
     ChatError,
+    Role,
 )
+from client import IOpenAIClient
 
 # pylint: disable=redefined-outer-name
+
+
+class MockOpenAIClient(IOpenAIClient):
+    """Mock implementation of the IOpenAIClient interface."""
+
+    def __init__(self) -> None:
+        """Create a new mock OpenAI client."""
+        self.mock = Mock()
+
+    def send_message(
+        self, messages: List[ChatCompletionMessageParam], model: str
+    ) -> str:
+        """Send a single message to the OpenAI API."""
+        return self.mock.send_message(messages, model)
+
+    def send_messages(
+        self, messages: List[ChatCompletionMessageParam], model: str
+    ) -> List[str]:
+        """Send multiple messages to the OpenAI API."""
+        return self.mock.send_messages(messages, model)
+
+    def call_api(
+        self, messages: Iterable[ChatCompletionMessageParam]
+    ) -> ChatCompletion | Stream[ChatCompletionChunk]:
+        """Call the OpenAI API with the given messages."""
+        return self.mock.call_api(messages)
+
+
+@pytest.fixture
+def mock_client() -> MockOpenAIClient:
+    """Create a mock OpenAI client."""
+    return MockOpenAIClient()
 
 
 @pytest.fixture
@@ -28,7 +68,13 @@ def chat_instance():
 def make_mock_chunk():
     """Fixture to create mock chat completion chunks."""
 
-    def _make(content=None, finish_reason=None):
+    def _make(
+        content: Optional[str] = None,
+        finish_reason: (
+            Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
+            | None
+        ) = None,
+    ) -> ChatCompletionChunk:
         return ChatCompletionChunk(
             id="fake_id",
             created=12345678,
@@ -80,7 +126,7 @@ class TestAddToConversation:
         """Test the add_to_conversation method of the Chat class for system."""
 
         chat = Chat(None, 1, 1, 1, 1)
-        chat.add_to_conversation("system", "Hello")
+        chat.add_to_conversation(Role.SYSTEM, "Hello")
         assert len(chat.conversation) == 1
         assert chat.conversation[0]["role"] == "system"
         assert chat.conversation[0]["content"] == "Hello"
@@ -89,7 +135,7 @@ class TestAddToConversation:
         """Test the add_to_conversation method of the Chat class for assistant."""
 
         chat = Chat(None, 1, 1, 1, 1)
-        chat.add_to_conversation("assistant", "Hello")
+        chat.add_to_conversation(Role.ASSISTANT, "Hello")
         assert len(chat.conversation) == 1
         assert chat.conversation[0]["role"] == "assistant"
         assert chat.conversation[0]["content"] == "Hello"
@@ -98,7 +144,7 @@ class TestAddToConversation:
         """Test the add_to_conversation method of the Chat class for user."""
 
         chat = Chat(None, 1, 1, 1, 1)
-        chat.add_to_conversation("user", "Hello")
+        chat.add_to_conversation(Role.USER, "Hello")
         assert len(chat.conversation) == 1
         assert chat.conversation[0]["role"] == "user"
         assert chat.conversation[0]["content"] == "Hello"
@@ -290,19 +336,6 @@ class TestCallGptApi:
             assert response_text == " \t \n \r "
             assert empty_count == 3
 
-    def test_print_chunks_behavior(self, chat_instance):
-        """Test the print_chunks behavior."""
-        mock_chunk = self.make_mock_chunk(content="Test print")
-        with mock.patch.object(
-            chat_instance, "call_api", return_value=[mock_chunk]
-        ), mock.patch.object(
-            chat_instance, "check_returned_chunk", side_effect=lambda x: x
-        ), mock.patch(
-            "builtins.print"
-        ) as mock_print:
-            chat_instance.call_gpt_api([], print_chunks=True)
-            mock_print.assert_called_once_with("Test print", end="")
-
     def test_early_stop(self, chat_instance):
         """Test early stop condition."""
         mock_chunks = [
@@ -363,3 +396,44 @@ class TestChatResponseGeneration:
         # Ensure call_gpt_api was called max_retries + 1 times (initial attempt + retries)
         assert mock_call_gpt_api.call_count == chat_instance.max_retries + 1
         assert mock_sleep.call_count == chat_instance.max_retries + 1
+
+    @patch("chat.Chat.call_gpt_api")
+    @patch("time.sleep", return_value=None)
+    def test_generate_response_with_valid_json(
+        self, mock_sleep, mock_call_gpt_api, chat_instance
+    ):
+        """
+        Test generate_response retries when the response is valid JSON.
+        """
+        mock_call_gpt_api.return_value = (
+            '{"error": null, "command": "a command", "content": "execute_command"}',
+            0,
+        )
+
+        resp = chat_instance.generate_response([], False)
+
+        assert resp.content == "execute_command"
+        assert resp.command == "a command"
+        assert resp.error is None
+        assert mock_call_gpt_api.call_count == 1
+        assert mock_sleep.call_count == 0
+
+    @patch("chat.Chat.call_gpt_api")
+    @patch("time.sleep", return_value=None)
+    def test_generate_response_with_invalid_json(
+        self, mock_sleep, mock_call_gpt_api, chat_instance
+    ):
+        """
+        Test generate_response retries when the response is not valid JSON.
+        """
+        mock_call_gpt_api.return_value = (
+            '{"type": "command"',
+            0,
+        )
+
+        with pytest.raises(ChatError) as exc_info:
+            chat_instance.generate_response([], False)
+
+        assert "Failed to receive a response from OpenAI." in str(exc_info.value)
+        assert mock_call_gpt_api.call_count == 4
+        assert mock_sleep.call_count == 4

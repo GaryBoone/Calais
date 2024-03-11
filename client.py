@@ -5,11 +5,19 @@ implementations.
 
 from typing import Iterable, Protocol
 from openai import OpenAI, Stream
+from openai.types.chat.completion_create_params import ResponseFormat
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
     ChatCompletionMessageParam,
 )
+
+# The model to use for chat completions. Note that to return JSON, the
+# model must be "gpt-4-turbo-preview" or "gpt-3.5-turbo-0125"
+# https://platform.openai.com/docs/guides/text-generation/json-mode
+# Another current valid model is "gpt-4", but it rejects the response_format
+# parameter.
+MODEL = "gpt-4-turbo-preview"
 
 
 class IOpenAIClient(Protocol):
@@ -40,7 +48,8 @@ class OpenAIClient(IOpenAIClient):
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
         """Call the streaming OpenAI API with the given messages."""
         return self.client.chat.completions.create(
-            model=self.model,
+            model=MODEL,
+            response_format=ResponseFormat({"type": "json_object"}),
             messages=messages,
             max_tokens=self.max_tokens,
             temperature=self.temperature,

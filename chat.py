@@ -5,8 +5,9 @@ Chat module to interact with the OpenAI API.
 import time
 import os
 import concurrent.futures
+from enum import Enum
 
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List
 from openai import OpenAIError, Stream
 from openai.types.chat import (
     ChatCompletion,
@@ -18,6 +19,19 @@ from openai.types.chat import (
 )
 
 from client import IOpenAIClient
+from response import Response
+from content_printer import ContentPrinter
+
+CONTENTS_START_MARKER = '"contents": "'
+CONTENTS_END_MARKER = '",\n'
+
+
+class Role(Enum):
+    """Enum for the role of a message in the conversation."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
 
 
 class ChatError(Exception):
@@ -46,17 +60,17 @@ class Chat:
         self.max_empty_chunks: int = max_empty_chunks
         self.conversation: List[ChatCompletionMessageParam] = []
 
-    def add_to_conversation(self, role: str, content: str) -> None:
+    def add_to_conversation(self, role: Role, content: str) -> None:
         """Add a message with a given role to the conversation."""
         msg: ChatCompletionMessageParam
         match role:
-            case "system":
+            case Role.SYSTEM:
                 msg = ChatCompletionSystemMessageParam(content=content, role="system")
-            case "assistant":
+            case Role.ASSISTANT:
                 msg = ChatCompletionAssistantMessageParam(
                     content=content, role="assistant"
                 )
-            case "user":
+            case Role.USER:
                 msg = ChatCompletionUserMessageParam(content=content, role="user")
             case _:
                 raise ChatError(f"Invalid role: {role}")
@@ -67,7 +81,8 @@ class Chat:
         messages: Iterable[ChatCompletionMessageParam],
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
         """Call the OpenAI API to generate a response."""
-        return self.client.call_api(messages)
+        resp = self.client.call_api(messages)
+        return resp
 
     def get_api_key(self) -> str:
         """Safely retrieve the OPENAI_API_KEY from the environment variables."""
@@ -135,19 +150,21 @@ class Chat:
             future = executor.submit(self.call_api, messages)
             response = future.result(timeout=self.timeout)
 
+        content_printer = ContentPrinter()
         text: str = ""
         empty_chunk_count: int = 0
         for chunk in response:
             chunk = self.check_returned_chunk(chunk)
             chunk_text, stop = self.process_response_chunk(chunk)
+            text += chunk_text
             if print_chunks:
-                print(chunk_text, end="")
+                content_printer.print_chunk(chunk_text)
             if not chunk_text.strip():  # Empty or whitespace only.
                 empty_chunk_count += 1
-            text += chunk_text
             if stop:  # Stop condition met.
                 break
 
+        content_printer.finish()
         return text, empty_chunk_count
 
     def handle_retry(self, message: str) -> None:
@@ -157,7 +174,7 @@ class Chat:
 
     def generate_response(
         self, messages: Iterable[ChatCompletionMessageParam], print_chunks: bool
-    ) -> str:
+    ) -> Response:
         """
         Generate a response from the OpenAI API. Retry on failure up to
         self.max_retries.
@@ -169,7 +186,12 @@ class Chat:
                 if empty_chunk_count > self.max_empty_chunks:
                     self.handle_retry("Received too many empty chunks. Retrying...")
                 else:
-                    return text
+                    try:
+                        # Now that we have a complete response, we can parse
+                        # the JSON and return it as a Response object.
+                        return Response.from_json(text)
+                    except ValueError as e:
+                        self.handle_retry(f"Error occurred. Retrying... ({e})")
 
             except (OpenAIError, concurrent.futures.TimeoutError) as e:
                 self.handle_retry(f"Error occurred. Retrying... ({e})")
@@ -177,7 +199,7 @@ class Chat:
 
         raise ChatError("Failed to receive a response from OpenAI.")
 
-    def call_gpt4(self, prompt: str, print_chunks: bool) -> str:
+    def call_gpt4(self, prompt: str, print_chunks: bool) -> Response:
         """Call the OpenAI API and accumulate the response chunks."""
-        self.add_to_conversation("user", prompt)
+        self.add_to_conversation(Role.USER, prompt)
         return self.generate_response(self.conversation, print_chunks)

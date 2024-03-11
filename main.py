@@ -56,9 +56,9 @@ UNSAFE_STRINGS = [
 
 
 def initialize_gpt(system_prompt: str) -> chat.Chat:
-    """
-    Initialize the GPT-4 model by checking for the API key, creating a chat
-    object, and setting the system prompt.
+    """Initialize the GPT-4 model
+
+    Check for the API key, create a chat object, and set the system prompt.
     """
     if "OPENAI_API_KEY" not in os.environ:
         print(
@@ -78,64 +78,86 @@ def initialize_gpt(system_prompt: str) -> chat.Chat:
         RETRY_DELAY,
         MAX_EMPTY_CHUNKS,
     )
-    gpt.add_to_conversation("system", system_prompt)
+    gpt.add_to_conversation(chat.Role.SYSTEM, system_prompt)
     return gpt
 
 
-def chat_with(gpt: chat.Chat, user_prompt: str) -> NoReturn:
+def do_command(response):
+    """Handle a command response from GPT-4.
+
+    The response content will have been printed by the stream handler.
+    """
+    command = process_command(response.command)
+    command = review_command(command)
+    print(f"Command: `{command}`")
+    # The stream handler will have printed the explanation, if any, in
+    # the contents.
+    user_input = input("[r]un,(e)xplain],(q)uit, or continue chatting: ")
+
+    match user_input.lower():
+        case "" | "R" | "r":
+            try:
+                subprocess.run(command, shell=True, check=True)
+            except KeyboardInterrupt:
+                print("Execution interrupted by user. Exiting.")
+            finally:
+                sys.exit(0)
+        case "q" | "quit" | "exit":
+            sys.exit(0)
+        case "e" | "ex" | "explain":
+            user_prompt = f"Explain the command `{command}`. Return the command in the command field and the explanation in the content field."
+            return user_prompt
+        case _:
+            user_prompt = input("\n> Prompt ([q] to quit): ")
+            if user_prompt.lower() in ["", "q", "quit", "exit"]:
+                sys.exit(0)
+            return user_prompt
+
+
+def do_content_prompt():
+    """Handle a content response from GPT-4.
+
+    The response content will have been printed by the stream handler.
+    """
+    user_prompt = input("[q]uit, or continue chatting: ")
+
+    match user_prompt.lower():
+        case "" | "q" | "quit" | "exit":
+            sys.exit(0)
+        case _:
+            return user_prompt
+
+
+def converse(gpt: chat.Chat, user_prompt: str) -> NoReturn:
     """Chat with GPT-4, looping until the user decides to stop."""
     while True:
-        gpt.add_to_conversation("user", user_prompt)
         response = gpt.call_gpt4(user_prompt, True)
-        gpt.add_to_conversation("assistant", response)
-        user_prompt = input("\n> Prompt ([q] to quit): ")
-        if user_prompt.lower() in ["", "q", "quit", "exit"]:
-            sys.exit(0)
+        if response.error:
+            print("GPT-4 returned an error:")
+            print(f"{response.error}")
+            print("Exiting.")
+            sys.exit(1)
+        gpt.add_to_conversation(chat.Role.ASSISTANT, response.to_json())
+        if response.command is not None:
+            user_prompt = do_command(response)
+            continue
+        if response.content:
+            user_prompt = do_content_prompt()
 
 
 def review_command(command: str) -> str:
     """Review the command returned by GPT-4 for safety."""
     command = " ".join(command.strip().split())
     if any([string in command for string in UNSAFE_STRINGS]):
-        print(f"Unsafe command {command}. Exiting.")
+        # The stream handler will have printed the error message in the
+        # contents.
+        print("Unsafe command. Exiting.")
         sys.exit(1)
     return command
 
 
-def create_command(gpt: chat.Chat, user_prompt: str) -> NoReturn:
-    """
-    Create a command from the user prompt and run it in the shell.
-    """
-    command = gpt.call_gpt4(user_prompt, False)
-    command = process_command(command)
-    command = review_command(command)
-    while True:
-        run_command = input(f"Run [Y/n/(e)xplain] `{command}`: ")
-
-        match run_command.lower():
-            case "" | "y" | "yes":
-                try:
-                    subprocess.run(command, shell=True, check=True)
-                except KeyboardInterrupt:
-                    print("Execution interrupted by user. Exiting.")
-                finally:
-                    sys.exit(0)
-
-            case "c" | "ch" | "chat":
-                pass
-            case "n" | "no" | "q" | "quit" | "exit":
-                sys.exit(0)
-            case "e" | "ex" | "explain":
-                user_prompt = f"Explain the command `{command}`"
-                gpt.call_gpt4(user_prompt, True)
-                print("")
-
-
 def check_input(match: re.Match) -> str:
-    """
-    Check the input of the user to make sure they're not operating on the root
-    directory.
-    """
+    """Check the input of the user for root directory operations."""
     user_input = input(f"Enter the value for {match.group(0)}: ")
     if user_input == "/" or user_input == "/*":
         print(f"Unsafe input {user_input}. Exiting.")
@@ -144,45 +166,26 @@ def check_input(match: re.Match) -> str:
 
 
 def process_command(command: str) -> str:
+    """Process the command returned by GPT-4.
+
+    Ask the user for input for each placeholder surrounded by angle brackets.
     """
-    Process the command returned by GPT-4, asking the user for input for each
-    placeholder surrounded by angle brackets.
-    """
-    if command == "unsafe command":
-        print("GPT-4 thinks this would be an unsafe command. Exiting.")
-        sys.exit(1)
     pattern = r"<([^<>]+)>"
     # Simple, non-matching count of angle brackets.
     if len(re.findall(r"<", command)) != len(re.findall(r">", command)):
         raise ValueError("Mismatched angle brackets")
-    print(f"The command is: `{command}`")
     return re.sub(pattern, check_input, command)
 
 
 def main() -> None:
-    """
-    Main entry point for calais. If the first argument is `-c`, chat with
-    GPT-4. Otherwise, create and run a command.
-    """
-    if len(sys.argv) < 2:
-        print("Usage: main.py <user_prompt>     # Create and run a command")
-        print("Usage: main.py -c <user_prompt>  # Chat")
-        sys.exit(1)
-
-    try:
-        match sys.argv[1]:
-            case "-c":
-                gpt = initialize_gpt("")
-                user_prompt = " ".join(sys.argv[2:])
-                chat_with(gpt, user_prompt)
-            case _:
-                os_name = platform.system()
-                system_prompt = COMMAND_SYSTEM_PROMPT + f"\n The OS is {os_name}."
-                gpt = initialize_gpt(system_prompt)
-                user_prompt = " ".join(sys.argv[1:])
-                create_command(gpt, user_prompt)
-    except chat.ChatError as e:
-        print(f"Unrecoverable error: '{e}'. Exiting.")
+    """Main entry point for Calais."""
+    os_name = platform.system()
+    system_prompt = COMMAND_SYSTEM_PROMPT + f"\n The OS is {os_name}."
+    gpt = initialize_gpt(system_prompt)
+    user_prompt = " ".join(sys.argv[1:])
+    if user_prompt == "":
+        user_prompt = input("> Prompt: ")
+    converse(gpt, user_prompt)
 
 
 if __name__ == "__main__":
