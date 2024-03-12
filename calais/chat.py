@@ -76,7 +76,7 @@ class Chat:
                 raise ChatError(f"Invalid role: {role}")
         self.conversation.append(msg)
 
-    def call_api(
+    def _call_api(
         self,
         messages: Iterable[ChatCompletionMessageParam],
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
@@ -84,14 +84,7 @@ class Chat:
         resp = self.client.call_api(messages)
         return resp
 
-    def get_api_key(self) -> str:
-        """Safely retrieve the OPENAI_API_KEY from the environment variables."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ChatError("OPENAI_API_KEY environment variable is not set.")
-        return api_key
-
-    def process_response_chunk(self, chunk: ChatCompletionChunk) -> tuple[str, bool]:
+    def _process_response_chunk(self, chunk: ChatCompletionChunk) -> tuple[str, bool]:
         """
         Process a single response chunk. Return the chunk as text, empty if the
         content was return as None. Also return True if the finish_reason was
@@ -116,7 +109,7 @@ class Chat:
                 raise ChatError(f"unexpected completion reason: {reason}")
         return content, False
 
-    def check_returned_chunk(
+    def _check_returned_chunk(
         self, chunk: tuple[str, Any] | ChatCompletionChunk
     ) -> ChatCompletionChunk:
         """
@@ -134,7 +127,7 @@ class Chat:
         else:
             raise ChatError(f"Received an unexpected chunk type: {type(chunk)}")
 
-    def call_gpt_api(
+    def _call_gpt_api(
         self,
         messages: Iterable[ChatCompletionMessageParam],
         print_chunks: bool = False,
@@ -147,15 +140,15 @@ class Chat:
         received.
         """
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(self.call_api, messages)
+            future = executor.submit(self._call_api, messages)
             response = future.result(timeout=self.timeout)
 
         content_printer = ContentPrinter()
         text: str = ""
         empty_chunk_count: int = 0
         for chunk in response:
-            chunk = self.check_returned_chunk(chunk)
-            chunk_text, stop = self.process_response_chunk(chunk)
+            chunk = self._check_returned_chunk(chunk)
+            chunk_text, stop = self._process_response_chunk(chunk)
             text += chunk_text
             if print_chunks:
                 content_printer.print_chunk(chunk_text)
@@ -167,12 +160,12 @@ class Chat:
         content_printer.finish()
         return text, empty_chunk_count
 
-    def handle_retry(self, message: str) -> None:
+    def _handle_retry(self, message: str) -> None:
         """Handle retry logic and messaging."""
         print(message)
         time.sleep(self.retry_delay)
 
-    def generate_response(
+    def _generate_response(
         self, messages: Iterable[ChatCompletionMessageParam], print_chunks: bool
     ) -> Response:
         """
@@ -182,19 +175,19 @@ class Chat:
         retries = 0
         while retries <= self.max_retries:
             try:
-                text, empty_chunk_count = self.call_gpt_api(messages, print_chunks)
+                text, empty_chunk_count = self._call_gpt_api(messages, print_chunks)
                 if empty_chunk_count > self.max_empty_chunks:
-                    self.handle_retry("Received too many empty chunks. Retrying...")
+                    self._handle_retry("Received too many empty chunks. Retrying...")
                 else:
                     try:
                         # Now that we have a complete response, we can parse
                         # the JSON and return it as a Response object.
                         return Response.from_json(text)
                     except ValueError as e:
-                        self.handle_retry(f"Error occurred. Retrying... ({e})")
+                        self._handle_retry(f"Error occurred. Retrying... ({e})")
 
             except (OpenAIError, concurrent.futures.TimeoutError) as e:
-                self.handle_retry(f"Error occurred. Retrying... ({e})")
+                self._handle_retry(f"Error occurred. Retrying... ({e})")
             retries += 1
 
         raise ChatError("Failed to receive a response from OpenAI.")
@@ -202,4 +195,4 @@ class Chat:
     def call_gpt4(self, prompt: str, print_chunks: bool) -> Response:
         """Call the OpenAI API and accumulate the response chunks."""
         self.add_to_conversation(Role.USER, prompt)
-        return self.generate_response(self.conversation, print_chunks)
+        return self._generate_response(self.conversation, print_chunks)

@@ -20,6 +20,7 @@ def mock_openai_client(mocker) -> IOpenAIClient:
     return mocker.create_autospec(IOpenAIClient, instance=True)
 
 
+# TODO: Remove. This is Chat, not the client.
 @pytest.fixture
 def chat_service(mock_openai_client) -> Chat:
     """Inject the mock IOpenAIClient into Chat."""
@@ -52,7 +53,7 @@ class TestChat:
         mock_openai_client.call_api.return_value = iter([mock_chunk])
 
         test_message = {"role": "user", "content": "Hello, single chunk!"}
-        result_stream = chat_service.call_api([test_message])
+        result_stream = chat_service._call_api([test_message])
 
         chunk = next(result_stream)
         assert chunk.choices[0].delta.content == "single_chunk"
@@ -74,7 +75,7 @@ class TestChat:
             {"role": "user", "content": "Hello, world!"},
         ]
 
-        result_stream = chat_service.call_api(test_messages)
+        result_stream = chat_service._call_api(test_messages)
 
         expected_contents = [("chunk0", None), ("chunk1", None), ("chunk2", "stop")]
         for (expected_content, expected_finish_reason), chunk in zip(
