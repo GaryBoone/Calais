@@ -1,6 +1,6 @@
 
 [project]
-name = "calais"
+name = "pycalais"
 version = "0.1.0"
 description = "Fast shell command generation using GPT-4"
 readme = "README.md"

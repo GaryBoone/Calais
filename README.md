@@ -127,7 +127,7 @@ By which strength the flower is created;
 
 Install the Python package using Pip:
 ```bash
-$ pip install calais
+$ pip install pycalais
 ```
 
 `Calais` will need your OpenAI API key exported as an environment variable:
