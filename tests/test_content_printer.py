@@ -1,7 +1,7 @@
 """Tests for the ContentPrinter class."""
 
 import pytest
-from content_printer import ContentPrinter
+from calais.content_printer import ContentPrinter
 
 
 @pytest.fixture

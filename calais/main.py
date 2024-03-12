@@ -10,9 +10,9 @@ import subprocess
 import sys
 from typing_extensions import NoReturn
 
-import chat
-import client
-from system_prompt import COMMAND_SYSTEM_PROMPT
+from calais.chat import Chat, Role
+from calais.client import OpenAIClient
+from calais.system_prompt import COMMAND_SYSTEM_PROMPT
 
 # GPT-4 parameters:
 MODEL = "gpt-4"
@@ -55,7 +55,7 @@ UNSAFE_STRINGS = [
 ]
 
 
-def initialize_gpt(system_prompt: str) -> chat.Chat:
+def initialize_gpt(system_prompt: str) -> Chat:
     """Initialize the GPT-4 model
 
     Check for the API key, create a chat object, and set the system prompt.
@@ -65,20 +65,20 @@ def initialize_gpt(system_prompt: str) -> chat.Chat:
             "Please set the OPENAI_API_KEY environment variable to your OpenAI API key."
         )
         sys.exit(1)
-    chat_client = client.OpenAIClient(
+    chat_client = OpenAIClient(
         os.environ["OPENAI_API_KEY"],
         MODEL,
         MAX_TOKENS,
         TEMPERATURE,
     )
-    gpt = chat.Chat(
+    gpt = Chat(
         chat_client,
         MAX_RETRIES,
         TIMEOUT,
         RETRY_DELAY,
         MAX_EMPTY_CHUNKS,
     )
-    gpt.add_to_conversation(chat.Role.SYSTEM, system_prompt)
+    gpt.add_to_conversation(Role.SYSTEM, system_prompt)
     return gpt
 
 
@@ -128,7 +128,7 @@ def do_content_prompt():
             return user_prompt
 
 
-def converse(gpt: chat.Chat, user_prompt: str) -> NoReturn:
+def converse(gpt: Chat, user_prompt: str) -> NoReturn:
     """Chat with GPT-4, looping until the user decides to stop."""
     while True:
         response = gpt.call_gpt4(user_prompt, True)
@@ -137,7 +137,7 @@ def converse(gpt: chat.Chat, user_prompt: str) -> NoReturn:
             print(f"{response.error}")
             print("Exiting.")
             sys.exit(1)
-        gpt.add_to_conversation(chat.Role.ASSISTANT, response.to_json())
+        gpt.add_to_conversation(Role.ASSISTANT, response.to_json())
         if response.command is not None:
             user_prompt = do_command(response)
             continue
@@ -185,7 +185,11 @@ def main() -> None:
     user_prompt = " ".join(sys.argv[1:])
     if user_prompt == "":
         user_prompt = input("> Prompt: ")
-    converse(gpt, user_prompt)
+    try:
+        converse(gpt, user_prompt)
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Exiting.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

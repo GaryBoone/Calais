@@ -8,8 +8,8 @@ from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
 )
 
-from client import IOpenAIClient
-from chat import Chat
+from calais.client import IOpenAIClient
+from calais.chat import Chat
 
 # pylint: disable=redefined-outer-name
 

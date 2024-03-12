@@ -3,7 +3,7 @@
 from typing import Dict, Any
 import pytest
 
-from response import Response
+from calais.response import Response
 
 
 class TestResponse:

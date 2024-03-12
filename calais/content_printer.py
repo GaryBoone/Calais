@@ -48,7 +48,10 @@ class ContentPrinter:
 
     def _print_unescaped_chunk(self, chunk_text: str) -> None:
         """Print the given chunk but undo escaped characters."""
-        unescaped = codecs.decode(chunk_text, "unicode_escape")
+        try:
+            unescaped = codecs.decode(chunk_text, "unicode_escape")
+        except UnicodeDecodeError:
+            unescaped = chunk_text
         if unescaped:
             print(unescaped, end="", flush=True)
             self.something_printed = True

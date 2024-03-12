@@ -18,9 +18,9 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
 )
 
-from client import IOpenAIClient
-from response import Response
-from content_printer import ContentPrinter
+from calais.client import IOpenAIClient
+from calais.response import Response
+from calais.content_printer import ContentPrinter
 
 CONTENTS_START_MARKER = '"contents": "'
 CONTENTS_END_MARKER = '",\n'

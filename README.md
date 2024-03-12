@@ -210,9 +210,6 @@ output to run them.
 3. GPT-4, like all current Large Language Models may hallucinate or make other
    errors. 
    
-   For example, it added `-H` to the request for files in an example above, even
-   though that wasn't requested or necessary.
-
    Always review the returned command before running it.
 
 ## Safeties and Cautions

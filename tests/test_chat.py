@@ -16,12 +16,12 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
 )
 
-from chat import (
+from calais.chat import (
     Chat,
     ChatError,
     Role,
 )
-from client import IOpenAIClient
+from calais.client import IOpenAIClient
 
 # pylint: disable=redefined-outer-name
 
@@ -376,7 +376,7 @@ class TestChatResponseGeneration:
             client=client, retries=3, timeout=10, retry_delay=1, max_empty_chunks=2
         )
 
-    @patch("chat.Chat.call_gpt_api")
+    @patch("calais.chat.Chat.call_gpt_api")
     @patch("time.sleep", return_value=None)
     def test_generate_response_with_too_many_empty_chunks(
         self, mock_sleep, mock_call_gpt_api, chat_instance
@@ -397,7 +397,7 @@ class TestChatResponseGeneration:
         assert mock_call_gpt_api.call_count == chat_instance.max_retries + 1
         assert mock_sleep.call_count == chat_instance.max_retries + 1
 
-    @patch("chat.Chat.call_gpt_api")
+    @patch("calais.chat.Chat.call_gpt_api")
     @patch("time.sleep", return_value=None)
     def test_generate_response_with_valid_json(
         self, mock_sleep, mock_call_gpt_api, chat_instance
@@ -418,7 +418,7 @@ class TestChatResponseGeneration:
         assert mock_call_gpt_api.call_count == 1
         assert mock_sleep.call_count == 0
 
-    @patch("chat.Chat.call_gpt_api")
+    @patch("calais.chat.Chat.call_gpt_api")
     @patch("time.sleep", return_value=None)
     def test_generate_response_with_invalid_json(
         self, mock_sleep, mock_call_gpt_api, chat_instance
